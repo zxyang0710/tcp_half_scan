@@ -26,8 +26,6 @@
 .
 ├── Makefile
 ├── README.md
-├── docs/
-│   └── exposure-audit-feature-spec.md
 └── src/
     ├── main.c             # 程序入口
     ├── gui.c / gui.h      # 主窗口和通用界面函数
