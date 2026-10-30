@@ -24,21 +24,27 @@
 
 ```text
 .
-├── Makefile
-├── README.md
-└── src/
-    ├── main.c             # 程序入口
-    ├── gui.c / gui.h      # 主窗口和通用界面函数
-    ├── app.h              # 应用共享结构与接口
-    ├── page_devices.c     # 设备管理页
-    ├── page_policies.c    # 端口策略页
-    ├── page_scan.c        # 扫描操作与实时结果页
-    ├── page_records.c     # 历史记录页
-    ├── scanner.c / .h     # 扫描逻辑
-    ├── db.c / db.h        # SQLite 数据读写
-    ├── export.c           # 巡检结果导出
-    ├── csv.c / csv.h      # CSV 辅助函数
-    └── sqlite3.c / .h     # SQLite 实现
+├── Makefile                  # 定义编译规则、依赖库、目标文件和清理命令
+├── README.md                 # 项目介绍、功能说明、安装编译和使用方法
+├── include/                  # 项目头文件目录
+│   ├── app.h                 # 声明应用共享的数据结构、全局变量和模块接口
+│   ├── csv.h                 # 声明 CSV 文件处理函数
+│   ├── db.h                  # 声明数据库结构、状态常量和 SQLite 操作函数
+│   ├── gui.h                 # 声明主窗口和通用 GUI 函数
+│   ├── scanner.h             # 声明扫描器的数据结构和扫描接口
+│   └── sqlite3.h             # SQLite 数据库库的接口声明
+└── src/                      # C 源代码目录
+    ├── csv.c                 # 实现 CSV 数据处理与转义辅助功能
+    ├── db.c                  # 初始化 SQLite 数据库，读写设备、策略和巡检记录
+    ├── export.c              # 整理并导出巡检结果
+    ├── gui.c                 # 创建主窗口、页面导航及通用界面功能
+    ├── main.c                # 程序入口，启动 GTK 应用
+    ├── page_devices.c        # 实现设备列表的添加、编辑、删除和刷新
+    ├── page_policies.c       # 实现端口策略的查看与管理
+    ├── page_records.c        # 展示历史巡检记录和端口状态变化
+    ├── page_scan.c           # 管理扫描操作、进度和实时结果展示
+    ├── scanner.c             # 执行 TCP 端口扫描并生成扫描结果
+    └── sqlite3.c              # SQLite 数据库库的实现代码
 ```
 
 ## 环境依赖

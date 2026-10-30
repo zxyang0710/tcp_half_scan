@@ -11,35 +11,39 @@
 #include <stdlib.h>
 #include <string.h>
 
-static GtkWidget      *p_tree;
-static GtkListStore   *p_store;
-static GtkWidget      *p_filter;   /* GtkComboBoxText 设备筛选 */
-static GtkWidget      *p_search;
+static GtkWidget      *p_tree;      // 指向树形列表控件
+static GtkListStore   *p_store;     // 树形列表的数据模型
+static GtkWidget      *p_filter;    // 指向设备筛选下拉框
+static GtkWidget      *p_search;    // 指向搜索输入框
 
+// ID, 设备, IP, 端口, 协议, 预期值, 用途, 列数
 enum { P_ID, P_DEV, P_IP, P_PORT, P_PROTO, P_EXPECT, P_PURPOSE, P_N };
 
+// 返回搜索框内容
 static const char *cur_search(void) {
     const char *q = gtk_entry_get_text(GTK_ENTRY(p_search));
     return (q && *q) ? q : "";
 }
 
+// 读取当前选中的设备 ID
 static int cur_filter_device(void) {
     const char *id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(p_filter));
     if (!id || !*id) return -1;
     return atoi(id);
 }
 
+// 重读数据库，刷新界面
 static void policies_reload(void) {
-    gtk_list_store_clear(p_store);
+    gtk_list_store_clear(p_store);              // 清空当前列表
     policy_t *arr = NULL; int n = 0;
-    if (db_policy_list(g_app.db, cur_filter_device(), cur_search(), &arr, &n) != 0)
-        return;
+    // 根据设备id和搜索文本查询
+    if (db_policy_list(g_app.db, cur_filter_device(), cur_search(), &arr, &n) != 0) return;
     for (int i = 0; i < n; i++) {
         char port[16];
         snprintf(port, sizeof(port), "%d", arr[i].port);
         GtkTreeIter it;
-        gtk_list_store_append(p_store, &it);
-        gtk_list_store_set(p_store, &it,
+        gtk_list_store_append(p_store, &it);               // 新增一行
+        gtk_list_store_set(p_store, &it,                   // 将结果填入对应列
                            P_ID, arr[i].id,
                            P_DEV, arr[i].device_name,
                            P_IP, arr[i].device_ip,
@@ -54,9 +58,9 @@ static void policies_reload(void) {
 
 /* 设备列表变化时刷新筛选下拉框 */
 void page_policies_reload_devices(void) {
-    const char *prev0 = gtk_combo_box_get_active_id(GTK_COMBO_BOX(p_filter));
-    char *prev = prev0 ? g_strdup(prev0) : NULL;
-
+    const char *prev0 = gtk_combo_box_get_active_id(GTK_COMBO_BOX(p_filter));       // 取得当前选中项的 ID
+    char *prev = prev0 ? g_strdup(prev0) : NULL;                                    // 有ID就复制一份
+    // 删除所有选项，添加全部设备
     gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(p_filter));
     gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(p_filter), "", "全部设备");
 

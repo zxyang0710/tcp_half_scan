@@ -11,6 +11,8 @@
 
 TARGET := tcp_scanner
 SRCDIR := src
+INCDIR := include
+BUILDDIR := build
 
 CC   ?= gcc
 CSTD := -std=gnu11
@@ -58,7 +60,7 @@ endif
 EXTRA_CFLAGS ?=
 EXTRA_LIBS   ?=
 
-CFLAGS := $(CSTD) $(WARN) $(OPT) -pthread -I$(SRCDIR) \
+CFLAGS := $(CSTD) $(WARN) $(OPT) -pthread -I$(INCDIR) -I$(SRCDIR) \
           $(GTK_CFLAGS) $(PCAP_CFLAGS) $(LIBNET_CFLAGS) $(EXTRA_CFLAGS)
 LDLIBS := $(GTK_LIBS) $(PCAP_LIBS) $(LIBNET_LIBS) -lpthread $(EXTRA_LIBS)
 
@@ -75,7 +77,7 @@ SRCS := $(addprefix $(SRCDIR)/, \
           scanner.c \
           sqlite3.c)
 
-OBJS := $(SRCS:.c=.o)
+OBJS := $(patsubst $(SRCDIR)/%.c,$(BUILDDIR)/%.o,$(SRCS))
 
 .PHONY: all clean run check
 
@@ -84,11 +86,14 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) $(OBJS) -o $@ $(LDLIBS)
 
-$(SRCDIR)/%.o: $(SRCDIR)/%.c
+$(BUILDDIR):
+	mkdir -p $@
+
+$(BUILDDIR)/%.o: $(SRCDIR)/%.c | $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # sqlite3.c 是第三方合并版，关掉 Warning 避免噪音，开启线程安全
-$(SRCDIR)/sqlite3.o: CFLAGS += -w -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION
+$(BUILDDIR)/sqlite3.o: CFLAGS += -w -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION
 
 clean:
 	rm -f $(OBJS) $(TARGET)
