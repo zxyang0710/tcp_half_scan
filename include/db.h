@@ -57,7 +57,7 @@ typedef struct {
     char device_name[128];
     char device_ip[64];
     int  port;
-    char protocol[8];    /* 第一阶段固定 TCP */
+    char protocol[8];    /* 固定 TCP */
     char expected[8];    /* open / closed */
     char purpose[256];
 } policy_t;

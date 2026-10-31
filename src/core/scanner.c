@@ -1,12 +1,11 @@
 /*
  * scanner.c - TCP半连接端口扫描器 核心实现
  *
- * 原理：
  *   1. 向目标主机的每个端口发送一个 TCP SYN 数据包（使用libnet构造）
  *   2. 通过 libpcap 捕获目标返回的响应包：
  *      - 收到 SYN+ACK → 端口开放，立即发送 RST 断开半连接
  *      - 收到 RST     → 端口关闭
- *      - 超时无响应   → 被防火墙过滤
+ *      - 超时无响应   → 被过滤
  *
  * 依赖库: libnet (构造发送数据包) + libpcap (捕获响应数据包)
  */
@@ -28,14 +27,15 @@
 #include <pcap.h>
 #include <libnet.h>
 
-/* TCP 标志位常量：部分 libnet 版本或平台上未必随头文件提供，
- * 这里做保底定义；若已被定义则不会重复定义，保证跨发行版可编译。 */
+/* TCP 标志位常量 */
 #ifndef TH_ACK
 #define TH_ACK 0x10
 #endif
+
 #ifndef TH_SYN
 #define TH_SYN 0x02
 #endif
+
 #ifndef TH_RST
 #define TH_RST 0x04
 #endif
@@ -146,62 +146,91 @@ static int get_default_device(char *dev, size_t dev_len) {
 /* ===== 通过路由表解析网卡 ===== */
 
 /*
- * 查路由表确定到达目标IP应使用的网卡
- * Linux: 执行 ip route get <target_ip>，解析 dev <名称>
- * 如果 target_ip 为 NULL 或路由查询失败，回退到 get_default_device()
+ * 根据目标 IP 查询路由，确定应使用的网卡。
+ * 通过 Linux 命令 ip route get <目标IP>，提取输出中的 dev <网卡名>。
+ * 未提供目标 IP、查询或解析失败、网卡为 lo 时，改用默认网卡选择策略。
+ * 返回值：成功解析到非 lo 网卡时返回 0；
+ *         回退时返回 get_default_device() 的结果；
+ *         输出缓冲区无效时返回 -1。
  */
 int scanner_resolve_device(const char *target_ip, char *dev, int dev_len) {
+    // 检查输出缓冲区指针和容量是否合法。
     if (!dev || dev_len <= 0) return -1;
+
+    // 将输出初始化为空字符串。
     dev[0] = '\0';
 
-    /* 没有目标IP，直接用默认策略 */
+    // 未提供目标 IP 时，直接按默认策略选择网卡。
     if (!target_ip || !target_ip[0]) {
         return get_default_device(dev, (size_t)dev_len);
     }
 
-    /* 构造 ip route get 命令 */
+    /*
+     * 构造路由查询命令。
+     * 例如：ip route get 192.168.1.10 2>/dev/null
+     * 2>/dev/null 表示丢弃标准错误输出。
+     */
     char cmd[256];
-    int written = snprintf(cmd, sizeof(cmd), "ip route get %s 2>/dev/null", target_ip);
+    int written = snprintf(cmd, sizeof(cmd),
+                           "ip route get %s 2>/dev/null", target_ip);
+
+    /*
+     * snprintf 返回原本需要写入的字符数，不包括结尾的 '\0'。
+     * 返回负数表示格式化失败；
+     * 返回值不小于缓冲区容量表示命令被截断。
+     * 这两种情况均回退到默认策略。
+     */
     if (written < 0 || (size_t)written >= sizeof(cmd)) {
         return get_default_device(dev, (size_t)dev_len);
     }
 
+    // 执行命令，并通过管道读取命令的标准输出。
     FILE *fp = popen(cmd, "r");
     if (!fp) {
         return get_default_device(dev, (size_t)dev_len);
     }
 
-    char line[512];
-    int found = 0;
+    char line[512]; // 保存每次读取的一段输出
+    int found = 0;  // 是否已成功提取网卡名
+
+    // 逐段读取命令输出，直到读取结束或找到有效网卡名。
     while (fgets(line, sizeof(line), fp)) {
-        /* 在输出中找 "dev <网卡名>" */
+        /*
+         * 查找网卡字段，例如：
+         * 192.168.1.10 dev eth0 src 192.168.1.2
+         */
         char *p = strstr(line, " dev ");
         if (p) {
-            p += 5;  /* 跳过 " dev " */
-            /* 提取网卡名（到空格或换行/回车为止） */
+            // 跳过长度为 5 的 " dev "，指向网卡名称的第一个字符。
+            p += 5;
+
+            // 向后寻找网卡名称的结尾：空格、换行、回车或字符串末尾。
             char *end = p;
             while (*end && *end != ' ' && *end != '\n' && *end != '\r')
                 end++;
+
+            // 两个指针的差值就是网卡名称的字节数。
             size_t len = (size_t)(end - p);
+
+            // 名称必须非空，并且缓冲区还要留出一个字节存放 '\0'。
             if (len > 0 && len < (size_t)dev_len) {
-                memcpy(dev, p, len);
-                dev[len] = '\0';
+                memcpy(dev, p, len); // 复制网卡名称，不包含结束符
+                dev[len] = '\0';    // 手动补上字符串结束符
                 found = 1;
                 break;
             }
         }
     }
+
+    // 关闭管道并等待命令结束；此处没有检查命令退出状态。
     pclose(fp);
 
+    // 没有解析出有效网卡名，回退到默认选择策略。
     if (!found) {
         return get_default_device(dev, (size_t)dev_len);
     }
 
-    /* 如果路由表指向了 loopback，改用默认策略 */
-    if (strcmp(dev, "lo") == 0) {
-        return get_default_device(dev, (size_t)dev_len);
-    }
-
+    // 已成功将查询得到的网卡名称写入 dev。
     return 0;
 }
 
