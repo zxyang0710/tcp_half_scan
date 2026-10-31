@@ -5,6 +5,7 @@
 #include "app.h"
 #include "db.h"
 #include "csv.h"
+#include "policy_service.h"
 
 #include <gtk/gtk.h>
 #include <stdio.h>
@@ -197,11 +198,6 @@ static void policy_dialog(int edit_id) {
         const char *exp_s = gtk_combo_box_get_active_id(GTK_COMBO_BOX(c_exp));
         if (!exp_s || !*exp_s) { ui_error(GTK_WINDOW(dlg), "请选择预期状态"); continue; }
 
-        if (db_policy_exists(g_app.db, dev_id, (int)port, edit_id)) {
-            ui_error(GTK_WINDOW(dlg), "该设备已存在 TCP 端口 %ld 的策略，请勿重复", port);
-            continue;
-        }
-
         policy_t np;
         memset(&np, 0, sizeof(np));
         np.id = edit_id;
@@ -213,8 +209,7 @@ static void policy_dialog(int edit_id) {
                  gtk_entry_get_text(GTK_ENTRY(e_purpose)));
 
         char err[256];
-        int rc = (edit_id > 0) ? db_policy_update(g_app.db, &np, err, sizeof(err))
-                               : db_policy_insert(g_app.db, &np, err, sizeof(err));
+        int rc = policy_service_save(g_app.db, &np, err, sizeof(err));
         if (rc != 0) { ui_error(GTK_WINDOW(dlg), "保存失败: %s", err); continue; }
 
         policies_reload();
@@ -240,7 +235,7 @@ static void on_delete_policy(GtkButton *b, gpointer d) {
     if (!ui_confirm(GTK_WINDOW(g_app.window),
             "确定删除所选端口策略吗？\n（历史巡检记录中的策略快照不受影响）"))
         return;
-    if (db_policy_delete(g_app.db, id) != 0) {
+    if (policy_service_delete(g_app.db, id) != 0) {
         ui_error(GTK_WINDOW(g_app.window), "删除失败");
         return;
     }
@@ -274,23 +269,7 @@ static void policies_import_csv(void) {
 
     /* 校验每一行：解析错误 / 设备未登记 / 文件内重复 */
     int n_err = 0, n_dup = 0, n_new = 0, n_upd = 0, n_valid = 0;
-    for (int i = 0; i < n; i++) {
-        csv_policy_row_t *r = &rows[i];
-        r->device_id = 0;
-        if (r->error[0]) { n_err++; continue; }
-        device_t dev;
-        if (!db_device_find_by_ip(g_app.db, r->ip, &dev)) {
-            snprintf(r->error, sizeof(r->error),
-                     "设备 IP 未在“设备”页登记: %s", r->ip);
-            n_err++;
-            continue;
-        }
-        r->device_id = dev.id;
-        if (r->dup_in_file) { n_dup++; continue; }
-        n_valid++;
-        if (db_policy_find_id(g_app.db, dev.id, r->port) > 0) n_upd++;
-        else                                                      n_new++;
-    }
+    policy_service_preview_import(g_app.db, rows, n, &n_err, &n_dup, &n_new, &n_upd, &n_valid);
 
     /* 生成预览报告 */
     GString *rep = g_string_new(NULL);
@@ -348,39 +327,9 @@ static void policies_import_csv(void) {
         return;
     }
 
-    /* 单事务提交：以 (设备 + TCP + 端口) 识别策略，相同则更新，否则新增 */
-    int applied = 0, failed = 0;
-    char *emsg = NULL;
-    if (sqlite3_exec(g_app.db, "BEGIN;", NULL, NULL, &emsg) != SQLITE_OK) {
-        ui_error(GTK_WINDOW(g_app.window), "无法开始事务: %s", emsg ? emsg : "");
-        sqlite3_free(emsg);
-        free(rows); g_free(path);
-        return;
-    }
-    for (int i = 0; i < n; i++) {
-        csv_policy_row_t *r = &rows[i];
-        if (r->error[0] || r->dup_in_file || r->device_id <= 0) continue;
-        int pid = db_policy_find_id(g_app.db, r->device_id, r->port);
-        policy_t p; memset(&p, 0, sizeof(p));
-        p.id = pid;
-        p.device_id = r->device_id;
-        p.port = r->port;
-        snprintf(p.protocol, sizeof(p.protocol), "TCP");
-        snprintf(p.expected, sizeof(p.expected), "%s", r->expected);
-        snprintf(p.purpose, sizeof(p.purpose), "%s", r->purpose);
-        char perr[256];
-        int rc = (pid > 0) ? db_policy_update(g_app.db, &p, perr, sizeof(perr))
-                           : db_policy_insert(g_app.db, &p, perr, sizeof(perr));
-        if (rc == 0) applied++;
-        else         failed++;
-    }
-    (void)applied;
-    if (failed > 0) {
-        sqlite3_exec(g_app.db, "ROLLBACK;", NULL, NULL, NULL);
-        ui_error(GTK_WINDOW(g_app.window),
-                 "导入失败：有 %d 条无法写入，已全部回滚。", failed);
+    if (policy_service_import(g_app.db, rows, n, err, sizeof(err)) != 0) {
+        ui_error(GTK_WINDOW(g_app.window), "%s", err);
     } else {
-        sqlite3_exec(g_app.db, "COMMIT;", NULL, NULL, NULL);
         policies_reload();
         app_status("CSV 导入完成：新增 %d 条，更新 %d 条", n_new, n_upd);
         ui_info(GTK_WINDOW(g_app.window),

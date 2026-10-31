@@ -64,18 +64,23 @@ CFLAGS := $(CSTD) $(WARN) $(OPT) -pthread -I$(INCDIR) -I$(SRCDIR) \
           $(GTK_CFLAGS) $(PCAP_CFLAGS) $(LIBNET_CFLAGS) $(EXTRA_CFLAGS)
 LDLIBS := $(GTK_LIBS) $(PCAP_LIBS) $(LIBNET_LIBS) -lpthread $(EXTRA_LIBS)
 
-SRCS := $(addprefix $(SRCDIR)/, \
-          main.c \
-          gui.c \
-          page_devices.c \
-          page_policies.c \
-          page_scan.c \
-          page_records.c \
-          export.c \
-          db.c \
-          csv.c \
-          scanner.c \
-          sqlite3.c)
+SRCS := \
+          $(SRCDIR)/main.c \
+          $(SRCDIR)/app/gui.c \
+          $(SRCDIR)/ui/pages/page_devices.c \
+          $(SRCDIR)/ui/pages/page_policies.c \
+          $(SRCDIR)/ui/pages/page_scan.c \
+          $(SRCDIR)/ui/pages/page_records.c \
+          $(SRCDIR)/ui/export_dialog.c \
+          $(SRCDIR)/services/scan_service.c \
+          $(SRCDIR)/services/device_service.c \
+          $(SRCDIR)/services/policy_service.c \
+          $(SRCDIR)/data/export.c \
+          $(SRCDIR)/data/db.c \
+          $(SRCDIR)/data/csv.c \
+          $(SRCDIR)/core/scanner.c \
+          $(SRCDIR)/domain.c \
+          $(SRCDIR)/data/sqlite3.c
 
 OBJS := $(patsubst $(SRCDIR)/%.c,$(BUILDDIR)/%.o,$(SRCS))
 
@@ -89,14 +94,15 @@ $(TARGET): $(OBJS)
 $(BUILDDIR):
 	mkdir -p $@
 
-$(BUILDDIR)/%.o: $(SRCDIR)/%.c | $(BUILDDIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(BUILDDIR)/%.o: $(SRCDIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
 # sqlite3.c 是第三方合并版，关掉 Warning 避免噪音，开启线程安全
-$(BUILDDIR)/sqlite3.o: CFLAGS += -w -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION
+$(BUILDDIR)/data/sqlite3.o: CFLAGS += -w -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(OBJS:.o=.d) $(BUILDDIR)/services_test $(TARGET)
 
 run: $(TARGET)
 	./$(TARGET)
@@ -105,9 +111,12 @@ check:
 	@echo "GTK3:      $$(pkg-config --modversion gtk+-3.0 2>/dev/null || echo 缺失)"
 	@echo "libpcap:   $$(pkg-config --modversion libpcap   2>/dev/null || echo 可能在系统路径)"
 	@echo "libnet:    $$(pkg-config --modversion libnet    2>/dev/null || libnet-config --version 2>/dev/null || echo 可能在系统路径)"
-	@echo "SQLite3:   已内置 (src/sqlite3.c, 无需系统包)"
+	@echo "SQLite3:   已内置 (src/data/sqlite3.c, 无需系统包)"
 	@echo "---"
 	@echo "CFLAGS:    $(CFLAGS)"
 	@echo "LDLIBS:    $(LDLIBS)"
 	@echo "---"
 	@echo "✅ 依赖检查通过"
+
+-include $(OBJS:.o=.d)
+

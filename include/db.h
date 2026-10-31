@@ -155,6 +155,8 @@ int  db_scan_results(sqlite3 *db, int sd_id, scan_result_row_t **out, int *count
 int  db_prev_complete_scan_device(sqlite3 *db, int current_scan_id, int device_id,
                                   const char *ip, int *out_sd_id);
 
+int db_scan_device_range(sqlite3 *db, int sd_id, int *rs, int *re);
+void db_scan_mark_reachable(sqlite3 *db, int sd_id);
 void db_free(void *p);
 
 #endif /* DB_H */

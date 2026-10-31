@@ -22,30 +22,52 @@
 
 ## 项目结构
 
+下面按实际目录逐层列出文件；`src/` 中的应用外壳、界面、业务服务、扫描核心和数据处理分别放在独立文件夹中。
+
 ```text
 .
-├── Makefile                  # 定义编译规则、依赖库、目标文件和清理命令
-├── README.md                 # 项目介绍、功能说明、安装编译和使用方法
-├── include/                  # 项目头文件目录
-│   ├── app.h                 # 声明应用共享的数据结构、全局变量和模块接口
-│   ├── csv.h                 # 声明 CSV 文件处理函数
-│   ├── db.h                  # 声明数据库结构、状态常量和 SQLite 操作函数
-│   ├── gui.h                 # 声明主窗口和通用 GUI 函数
-│   ├── scanner.h             # 声明扫描器的数据结构和扫描接口
-│   └── sqlite3.h             # SQLite 数据库库的接口声明
-└── src/                      # C 源代码目录
-    ├── csv.c                 # 实现 CSV 数据处理与转义辅助功能
-    ├── db.c                  # 初始化 SQLite 数据库，读写设备、策略和巡检记录
-    ├── export.c              # 整理并导出巡检结果
-    ├── gui.c                 # 创建主窗口、页面导航及通用界面功能
-    ├── main.c                # 程序入口，启动 GTK 应用
-    ├── page_devices.c        # 实现设备列表的添加、编辑、删除和刷新
-    ├── page_policies.c       # 实现端口策略的查看与管理
-    ├── page_records.c        # 展示历史巡检记录和端口状态变化
-    ├── page_scan.c           # 管理扫描操作、进度和实时结果展示
-    ├── scanner.c             # 执行 TCP 端口扫描并生成扫描结果
-    └── sqlite3.c              # SQLite 数据库库的实现代码
+├── .gitignore                       
+├── Makefile                         # Linux 编译、链接、依赖检查、清理和服务回归测试规则
+├── README.md                        # 项目功能、目录结构、环境配置和使用维护说明
+├── tcp_scanner                      # 可执行文件，修改源码后需重新编译
+├── include/                         # 各模块的头文件与对外接口
+│   ├── app.h                       # GTK 应用共享状态、页面构建、跨页通知及通用界面工具接口
+│   ├── gui.h                       # 图形界面启动入口 gui_run 的声明
+│   ├── domain.h                    # 状态文案、IPv4 校验、策略判断和历史变化规则接口
+│   ├── device_service.h            # 设备保存校验及删除服务接口
+│   ├── policy_service.h            # 策略保存、删除、CSV 导入预览校验及事务导入接口
+│   ├── scan_service.h              # 巡检作业、事件数据与回调类型，以及准备、执行和停止接口
+│   ├── records_service.h           # 按指定文件路径导出巡检记录 CSV 的接口
+│   ├── scanner.h                   # 网络扫描上下文、端口结果、回调、统计及扫描操作接口
+│   ├── db.h                        # 数据实体、状态常量、数据库初始化和各表读写接口
+│   ├── csv.h                       # CSV 字段转义、行拆分、文件读取及策略导入解析接口
+│   └── sqlite3.h                   # 内置第三方 SQLite 库的公共接口声明
+└── src/                            # 项目实现代码
+    ├── main.c                      # 程序入口：选择图形或命令行模式，处理命令行扫描参数和输出
+    ├── domain.c                    # 公共业务规则：状态文案、IPv4 校验、策略判断及历史状态对比
+    ├── app/                        # 应用外壳与生命周期
+    │   └── gui.c                   # 初始化 GTK 和数据库，创建主窗口、导航、状态栏及通用对话框
+    ├── ui/                         # 界面展示与交互
+    │   ├── export_dialog.c         # 选择导出路径、调用 CSV 导出接口并显示成功或失败提示
+    │   └── pages/                  # 主窗口的四个功能页面
+    │       ├── page_devices.c      # 设备列表、添加和编辑对话框、删除确认及相关界面刷新
+    │       ├── page_policies.c     # 策略列表、筛选搜索、编辑交互和 CSV 导入预览界面
+    │       ├── page_scan.c         # 设备多选、扫描设置、启停交互及主线程中的实时结果与进度刷新
+    │       └── page_records.c      # 历史记录列表、分组详情、历史变化展示及记录导出入口
+    ├── services/                   # 业务校验与操作编排，不依赖 GTK
+    │   ├── device_service.c        # 校验设备名称、IPv4 和 IP 重复情况，调用数据层保存或删除设备
+    │   ├── policy_service.c        # 检查策略重复、匹配导入设备、统计预览结果及事务提交或回滚
+    │   └── scan_service.c          # 准备端口和策略快照、创建记录、执行扫描、处理停止并保存结果及发送事件
+    ├── core/                       # 底层网络探测
+    │   └── scanner.c               # 解析网络接口、构造和收发探测包、判定端口状态及提供扫描统计
+    └── data/                       # 数据持久化与文件处理，不依赖 GTK
+        ├── db.c                    # 数据库路径和表结构初始化，设备、策略、巡检及历史结果的 SQL 读写
+        ├── csv.c                   # CSV 字段转义、文本解析、文件读取和策略导入行解析
+        ├── export.c                # 查询巡检及历史对比数据，生成带 UTF-8 BOM 的巡检记录 CSV 文件
+        └── sqlite3.c               # 内置第三方 SQLite 合并实现，无需单独链接系统 SQLite 库
 ```
+
+编译后会生成 `build/` 目录，按源文件所在子目录保存目标文件和头文件依赖文件；`make test` 还会生成 `build/services_test` 测试程序。
 
 ## 环境依赖
 
@@ -53,7 +75,7 @@
 
 ```bash
 sudo apt update
-sudo apt install build-essential pkg-config libgtk-3-dev libpcap-dev
+sudo apt install build-essential pkg-config libgtk-3-dev libpcap-dev libnet1-dev
 ```
 
 项目使用 pthread 和 GTK 3。若系统未提供 SQLite 开发库，而项目配置要求系统 SQLite，请安装：
@@ -73,7 +95,7 @@ make
 编译成功后，按 Makefile 中定义的目标运行程序。例如：
 
 ```bash
-./tcp_half_scan
+./tcp_scanner
 ```
 
 > 如果生成的可执行文件名称不同，请以 Makefile 中的目标名称为准。

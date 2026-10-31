@@ -47,14 +47,7 @@ int  ui_confirm(GtkWindow *parent, const char *fmt, ...);
 char *ui_choose_open_file(GtkWindow *parent, const char *title, const char *filter_name, const char *pattern);
 char *ui_choose_save_file(GtkWindow *parent, const char *title, const char *default_name, const char *filter_name, const char *pattern);
 
-/* 显示文案转换 */
-const char *status_label(const char *status);
-const char *mode_label(const char *mode);
-const char *actual_label(const char *actual);
-const char *expected_label(const char *expected);
-
-/* 校验 IPv4 点分十进制 */
-int util_valid_ipv4(const char *ip);
+#include "domain.h"
 
 /* 文件名用时间戳 */
 void app_timestamp_filename(char *buf, int len);

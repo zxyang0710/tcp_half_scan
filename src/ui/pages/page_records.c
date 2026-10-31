@@ -10,6 +10,7 @@
 
 #include "app.h"
 #include "db.h"
+#include "domain.h"
 
 #include <gtk/gtk.h>
 #include <stdio.h>
@@ -31,40 +32,8 @@ static void show_detail(int scan_id);
 static void clear_detail(void);
 
 /* 与上次状态的变化 */
-static void compare_change(const char *prev, int has_prev, const char *now,
-                           char *out, int outlen) {
-    if (!has_prev)            { snprintf(out, outlen, "无法比较（上次未检查）"); return; }
-    if (strcmp(prev, now) == 0) { snprintf(out, outlen, "状态未变"); return; }
-    if (strcmp(prev, ST_OPEN) == 0 && strcmp(now, ST_CLOSED) == 0)
-        { snprintf(out, outlen, "开放变关闭"); return; }
-    if (strcmp(prev, ST_CLOSED) == 0 && strcmp(now, ST_OPEN) == 0)
-        { snprintf(out, outlen, "关闭变开放"); return; }
-    if (strcmp(prev, ST_FILTERED) == 0 && strcmp(now, ST_OPEN) == 0)
-        { snprintf(out, outlen, "上次无响应，本次开放"); return; }
-    if (strcmp(prev, ST_FILTERED) == 0 && strcmp(now, ST_CLOSED) == 0)
-        { snprintf(out, outlen, "上次无响应，本次关闭"); return; }
-    if (strcmp(now, ST_FILTERED) == 0)
-        { snprintf(out, outlen, "无法确认（本次无响应）"); return; }
-    snprintf(out, outlen, "状态未变");
-}
 
 /* 读取某设备分组的端口范围 */
-static int get_sd_range(sqlite3 *db, int sd_id, int *rs, int *re) {
-    const char *sql =
-        "SELECT COALESCE(range_start,0),COALESCE(range_end,0) "
-        "FROM scan_devices WHERE id=?1;";
-    sqlite3_stmt *st = NULL;
-    if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) != SQLITE_OK) return 0;
-    sqlite3_bind_int(st, 1, sd_id);
-    int ok = 0;
-    if (sqlite3_step(st) == SQLITE_ROW) {
-        *rs = sqlite3_column_int(st, 0);
-        *re = sqlite3_column_int(st, 1);
-        ok = 1;
-    }
-    sqlite3_finalize(st);
-    return ok;
-}
 
 static void clear_detail(void) {
     r_cur_scan_id = 0;
@@ -186,7 +155,7 @@ static void show_detail(int scan_id) {
         if (prev_sd > 0) {
             db_scan_results(g_app.db, prev_sd, &prows, &pn);
             int prs = 0, pre = 0;
-            get_sd_range(g_app.db, prev_sd, &prs, &pre);
+            db_scan_device_range(g_app.db, prev_sd, &prs, &pre);
             char pl[300];
             snprintf(pl, sizeof(pl), "比较基准：上一次完整巡检    端口范围 %d - %d%s",
                      prs, pre,
@@ -234,7 +203,7 @@ static void show_detail(int scan_id) {
                 for (int k = 0; k < pn; k++)
                     if (prows[k].port == rw->port) { prev_actual = prows[k].actual; break; }
                 char chg[64];
-                compare_change(prev_actual, prev_actual != NULL, rw->actual, chg, sizeof(chg));
+                domain_compare_change(prev_actual, prev_actual != NULL, rw->actual, chg, sizeof(chg));
                 if (strcmp(chg, "关闭变开放") == 0 || strcmp(chg, "上次无响应，本次开放") == 0)
                     n_newopen++;
                 else if (strcmp(chg, "开放变关闭") == 0)

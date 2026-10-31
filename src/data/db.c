@@ -750,3 +750,33 @@ int db_policy_find_id(sqlite3 *db, int device_id, int port) {
     sqlite3_finalize(st);
     return id;
 }
+
+void db_scan_mark_reachable(sqlite3 *db, int sd_id) {
+        sqlite3_stmt *st = NULL;
+        if (sqlite3_prepare_v2(db,
+                "UPDATE scan_results SET actual_status=?1 WHERE scan_device_id=?2 AND actual_status=?3",
+                -1, &st, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(st, 1, ST_FILTERED_REACHABLE, -1, SQLITE_STATIC);
+            sqlite3_bind_int(st, 2, sd_id);
+            sqlite3_bind_text(st, 3, ST_FILTERED, -1, SQLITE_STATIC);
+            sqlite3_step(st);
+            sqlite3_finalize(st);
+        }
+}
+
+int db_scan_device_range(sqlite3 *db, int sd_id, int *rs, int *re) {
+    const char *sql =
+        "SELECT COALESCE(range_start,0),COALESCE(range_end,0) "
+        "FROM scan_devices WHERE id=?1;";
+    sqlite3_stmt *st = NULL;
+    if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) != SQLITE_OK) return 0;
+    sqlite3_bind_int(st, 1, sd_id);
+    int ok = 0;
+    if (sqlite3_step(st) == SQLITE_ROW) {
+        *rs = sqlite3_column_int(st, 0);
+        *re = sqlite3_column_int(st, 1);
+        ok = 1;
+    }
+    sqlite3_finalize(st);
+    return ok;
+}
